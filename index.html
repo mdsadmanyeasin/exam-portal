@@ -460,6 +460,7 @@
             const el = document.getElementById('view-exam');
             const { p, name, start, durationMs } = activeExam;
             document.body.classList.add('exam-active');
+            zoom = 1;
 
             el.innerHTML = `
             <div class="card">
@@ -471,7 +472,13 @@
                 ⚠️ <strong>CRITICAL WARNING:</strong> Do not refresh, reload, or navigate away from this page. Doing so will automatically end and submit your exam.
               </div>
 
-              <div id="pdfViewer" style="width:100%;max-height:520px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:#1a1d24;padding:8px" oncontextmenu="return false"></div>
+              <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:8px">
+                <button type="button" onclick="applyZoom(zoom/1.25)" style="width:auto;padding:6px 14px;margin:0">−</button>
+                <span id="zoomLbl" style="min-width:48px;text-align:center;color:var(--sub);font-size:13px">100%</span>
+                <button type="button" onclick="applyZoom(zoom*1.25)" style="width:auto;padding:6px 14px;margin:0">+</button>
+                <button type="button" onclick="applyZoom(1)" style="width:auto;padding:6px 14px;margin:0">Reset</button>
+              </div>
+              <div id="pdfViewer" style="width:100%;max-height:520px;overflow:auto;touch-action:pan-x pan-y;-webkit-overflow-scrolling:touch;border:1px solid var(--border);border-radius:8px;background:#1a1d24;padding:8px" oncontextmenu="return false"></div>
               <button class="primary danger" onclick="finishExam(false)">Submit / End exam</button>
             </div>`;
             renderPdf(p.data);
@@ -494,13 +501,12 @@
                 const context = canvas.getContext('2d', { alpha: false });
                 canvas.width = Math.floor(viewport.width);
                 canvas.height = Math.floor(viewport.height);
-                canvas.style.width = '100%';
+                canvas.style.width = (zoom * 100) + '%';
                 canvas.style.height = 'auto';
                 canvas.style.display = 'block';
                 canvas.style.marginBottom = '12px';
                 canvas.style.backgroundColor = '#ffffff';
-                canvas.style.transition = 'width .2s';
-                canvas.style.touchAction = 'pan-x pan-y';
+                
                 await page.render({ canvasContext: context, viewport }).promise;
                 container.appendChild(canvas);
             }
@@ -752,28 +758,64 @@
             else prompt('Copy this link:', url);
         }
 
-        // Zoom: double-click (PC) / double-tap (mobile)
-        let lastTap = 0;
-        function toggleZoom(canvas, cx, cy) {
+        // Free zoom: pinch (mobile), Ctrl+wheel / +/- buttons (PC), double-click/tap = quick toggle. Zoom level stays until changed.
+        let zoom = 1, lastTap = 0;
+        const ZMIN = 1, ZMAX = 6;
+        function applyZoom(z, cx, cy) {
             const box = document.getElementById('pdfViewer');
-            const zoomed = canvas.style.width !== '100%';
-            const rb = box.getBoundingClientRect();
-            const relX = (cx - rb.left + box.scrollLeft) / box.scrollWidth;
-            const relY = (cy - rb.top + box.scrollTop) / box.scrollHeight;
-            document.querySelectorAll('#pdfViewer canvas').forEach(c => c.style.width = zoomed ? '100%' : '250%');
-            box.style.overflowX = zoomed ? 'hidden' : 'auto';
-            setTimeout(() => {
-                box.scrollLeft = zoomed ? 0 : relX * box.scrollWidth - rb.width / 2;
-                box.scrollTop = relY * box.scrollHeight - rb.height / 2;
-            }, 220);
+            if (!box) return;
+            z = Math.min(ZMAX, Math.max(ZMIN, z));
+            const r = box.getBoundingClientRect();
+            if (cx == null) { cx = r.left + r.width / 2; cy = r.top + r.height / 2; }
+            const relX = (cx - r.left + box.scrollLeft) / box.scrollWidth;
+            const relY = (cy - r.top + box.scrollTop) / box.scrollHeight;
+            zoom = z;
+            box.querySelectorAll('canvas').forEach(c => c.style.width = (z * 100) + '%');
+            box.scrollLeft = relX * box.scrollWidth - (cx - r.left);
+            box.scrollTop = relY * box.scrollHeight - (cy - r.top);
+            const l = document.getElementById('zoomLbl');
+            if (l) l.textContent = Math.round(z * 100) + '%';
         }
+        const inViewer = e => e.target.closest && e.target.closest('#pdfViewer');
+
         document.addEventListener('dblclick', e => {
-            if (e.target.closest('#pdfViewer') && e.target.tagName === 'CANVAS') toggleZoom(e.target, e.clientX, e.clientY);
+            if (inViewer(e)) applyZoom(zoom > 1.05 ? 1 : 2.5, e.clientX, e.clientY);
         });
+        document.addEventListener('wheel', e => {
+            if (inViewer(e) && e.ctrlKey) { e.preventDefault(); applyZoom(zoom * Math.exp(-e.deltaY * 0.01), e.clientX, e.clientY); }
+        }, { passive: false });
+
+        // PC: drag to move around when zoomed
+        let drag = null;
+        document.addEventListener('mousedown', e => {
+            const box = inViewer(e);
+            if (box && e.button === 0 && zoom > 1) { drag = { x: e.clientX, y: e.clientY, l: box.scrollLeft, t: box.scrollTop, box: document.getElementById('pdfViewer') }; box.style.cursor = 'grabbing'; }
+        });
+        document.addEventListener('mousemove', e => {
+            if (!drag) return;
+            drag.box.scrollLeft = drag.l - (e.clientX - drag.x);
+            drag.box.scrollTop = drag.t - (e.clientY - drag.y);
+        });
+        document.addEventListener('mouseup', () => { if (drag) { drag.box.style.cursor = zoom > 1 ? 'grab' : ''; drag = null; } });
+
+        // Mobile: pinch to zoom (any size), one finger scrolls, double-tap toggles
+        let pinch = null;
+        const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+        document.addEventListener('touchstart', e => {
+            if (inViewer(e) && e.touches.length === 2) pinch = { d: dist(e.touches), z: zoom };
+        }, { passive: true });
+        document.addEventListener('touchmove', e => {
+            if (pinch && e.touches.length === 2) {
+                e.preventDefault();
+                const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2, cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+                applyZoom(pinch.z * dist(e.touches) / pinch.d, cx, cy);
+            }
+        }, { passive: false });
         document.addEventListener('touchend', e => {
-            const t = e.target, now = Date.now();
-            if (t.tagName === 'CANVAS' && t.closest('#pdfViewer') && e.changedTouches.length === 1) {
-                if (now - lastTap < 300) { e.preventDefault(); toggleZoom(t, e.changedTouches[0].clientX, e.changedTouches[0].clientY); lastTap = 0; }
+            if (pinch) { if (e.touches.length < 2) pinch = null; return; }
+            if (inViewer(e) && e.changedTouches.length === 1 && e.touches.length === 0) {
+                const now = Date.now();
+                if (now - lastTap < 300) { e.preventDefault(); applyZoom(zoom > 1.05 ? 1 : 2.5, e.changedTouches[0].clientX, e.changedTouches[0].clientY); lastTap = 0; }
                 else lastTap = now;
             }
         }, { passive: false });
