@@ -502,17 +502,6 @@
                 canvas.style.transition = 'width .2s';
                 canvas.style.touchAction = 'pan-x pan-y';
                 await page.render({ canvasContext: context, viewport }).promise;
-                if (activeExam) {
-                    context.save();
-                    context.globalAlpha = 0.12; context.fillStyle = '#000';
-                    context.font = Math.round(canvas.width / 18) + 'px sans-serif';
-                    context.rotate(-Math.PI / 6);
-                    const wm = activeExam.name + ' • ' + new Date().toLocaleString();
-                    for (let y = 0; y < canvas.height * 1.5; y += canvas.height / 5)
-                        for (let x = -canvas.width; x < canvas.width * 1.5; x += canvas.width * 0.9)
-                            context.fillText(wm, x, y);
-                    context.restore();
-                }
                 container.appendChild(canvas);
             }
         }
@@ -799,6 +788,7 @@
             document.head.appendChild(st);
             const on = () => activeExam && document.body.classList.add('shield');
             const off = () => document.body.classList.remove('shield');
+            const end = () => { if (activeExam) { document.body.classList.remove('shield'); finishExam(true, 'Screenshot attempt detected'); } };
             document.addEventListener('visibilitychange', () => document.hidden ? on() : off());
             window.addEventListener('blur', on);
             window.addEventListener('focus', off);
@@ -810,10 +800,10 @@
                 if (k === 'printscreen' || (e.ctrlKey || e.metaKey) && ['p', 's', 'c', 'u'].includes(k) || (e.metaKey && e.shiftKey && ['3', '4', '5'].includes(k)) || (e.ctrlKey && e.shiftKey && k === 's') || k === 'f12') {
                     e.preventDefault(); on();
                     try { navigator.clipboard.writeText(''); } catch (_) {}
-                    setTimeout(off, 1500);
+                    if (k !== 'f12' && !(e.ctrlKey && k === 'c') && !(e.ctrlKey && k === 'u')) { end(); } else setTimeout(off, 1500);
                 }
             });
-            document.addEventListener('keyup', e => { if (e.key === 'PrintScreen' && activeExam) { try { navigator.clipboard.writeText(''); } catch (_) {} } });
+            document.addEventListener('keyup', e => { if (e.key === 'PrintScreen' && activeExam) { try { navigator.clipboard.writeText(''); } catch (_) {} end(); } });
         })();
 
         load();
