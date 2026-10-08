@@ -428,7 +428,10 @@
 
             el.innerHTML = filterHtml + filtered.map(p => `
             <div class="card">
-              <h2 style="text-transform:none;letter-spacing:0;color:var(--text);font-size:18px">${p.name}</h2>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+                <h2 style="text-transform:none;letter-spacing:0;color:var(--text);font-size:18px;margin:0">${p.name}</h2>
+                <button onclick="shareExam('${p.id}')" style="width:auto;flex-shrink:0;display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border:0;border-radius:999px;background:#e8effd;color:#1f2937;font-size:14px;font-weight:500;cursor:pointer;margin:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>Share</button>
+              </div>
               <div style="display:flex;gap:12px;flex-wrap:wrap;margin:4px 0 10px;font-size:13px;color:var(--sub)">
                 <span>📚 ${p.class || 'General'}</span>
                 <span>⏱ ${p.duration} min</span>
@@ -437,7 +440,6 @@
               <label>Your name</label>
               <input type="text" id="ename-${p.id}" placeholder="Enter your full name">
               <button class="primary" onclick="startExam('${p.id}')">Start exam</button>
-              <button onclick="shareExam('${p.id}')" style="margin-top:8px;width:100%">🔗 Share this question link</button>
               ${sharedId ? `<a href="${location.pathname}" style="display:block;text-align:center;margin-top:8px;font-size:13px">Show all exams</a>` : ''}
             </div>`).join('');
         }
